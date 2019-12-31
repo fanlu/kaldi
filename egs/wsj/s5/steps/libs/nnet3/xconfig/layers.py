@@ -13,3 +13,4 @@ from .trivial_layers import *
 from .composite_layers import *
 from .transformer_encoder import *
 from .multi_stride_self_attention import *
+from .dfsmn import *
