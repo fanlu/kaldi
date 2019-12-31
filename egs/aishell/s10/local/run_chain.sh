@@ -30,14 +30,13 @@ minibatch_size=128
 num_epochs=10
 lr=2e-3
 
-feat_dim=$(cat exp/chain/egs/info/feat_dim)
-output_dim=$(cat exp/chain/egs/info/num_pdfs)
 
 hidden_dim=625
 kernel_size_list="1, 3, 3, 3, 3, 3" # comma separated list
 stride_list="1, 1, 3, 1, 1, 1" # comma separated list
 
 log_level=info # valid values: debug, info, warning
+re_inf=false
 
 . ./path.sh
 . ./cmd.sh
@@ -136,6 +135,8 @@ if [[ $stage -le 7 ]]; then
   local/mkgraph.sh --self-loop-scale 1.0 data/lang_test exp/chain exp/chain/graph
 fi
 
+feat_dim=$(cat exp/chain/egs/info/feat_dim)
+output_dim=$(cat exp/chain/egs/info/num_pdfs)
 if [[ $stage -le 8 ]]; then
   echo "training..."
 
@@ -144,7 +145,9 @@ if [[ $stage -le 8 ]]; then
   if [[ -f exp/chain/train/best_model.pt ]]; then
     train_checkpoint=./exp/chain/train/best_model.pt
   fi
-
+  echo $PYTHONPATH
+  echo $(which python3)
+  echo $PATH
   # sort the options alphabetically
   python3 ./chain/train.py \
     --checkpoint=${train_checkpoint:-} \
@@ -170,11 +173,13 @@ if [[ $stage -le 9 ]]; then
   echo "inference: computing likelihood"
   for x in test dev; do
     mkdir -p exp/chain/inference/$x
-    if [[ -f exp/chain/inference/$x/confidence.scp ]]; then
+    if [[ -f exp/chain/inference/$x/confidence.scp && ! re_inf ]]; then
       echo "exp/chain/inference/$x/confidence.scp already exists! Skip"
     else
-      best_epoch=$(cat exp/chain/train/best-epoch-info | grep 'best epoch' | awk '{print $NF}')
-      inference_checkpoint=exp/chain/train/epoch-${best_epoch}.pt
+      # best_epoch=$(cat exp/chain/train/best-epoch-info | grep 'best epoch' | awk '{print $NF}')
+      # inference_checkpoint=exp/chain/train/epoch-${best_epoch}.pt
+      inference_checkpoint=exp/chain/train/best-model5.pt
+      python3 ./chain/avg_ckpt.py --out $inference_checkpoint
       python3 ./chain/inference.py \
         --checkpoint $inference_checkpoint \
         --device-id $device_id \

@@ -86,7 +86,12 @@ config_to_layer = {
         'dim-range-component': xlayers.XconfigDimRangeComponent,
         'offset-component':  xlayers.XconfigPerElementOffsetComponent,
         'combine-feature-maps-layer': xlayers.XconfigCombineFeatureMapsLayer,
-        'delta-layer': xlayers.XconfigDeltaLayer
+        'delta-layer': xlayers.XconfigDeltaLayer,
+        'attention-addrenorm-feedforward-addrenorm-layer': xlayers.XconfigTransformerEncoderLayer,
+        'attention-layer': xlayers.XconfigTransformerEncoderLayer,
+        'addrenorm-feedforward-addrenorm-layer': xlayers.XconfigTransformerEncoderLayer,
+        'attention-addbatchnorm-feedforward-addbatchnorm-layer': xlayers.XconfigTransformerEncoderLayer,
+        'mssa-layer': xlayers.XconfigMultiStrideSelfAttentionLayer,
 }
 
 # Turn a config line and a list of previous layers into

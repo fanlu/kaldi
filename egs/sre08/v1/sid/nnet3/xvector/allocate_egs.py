@@ -209,7 +209,7 @@ def deterministic_chunk_length(archive_id, num_archives, min_frames_per_chunk, m
 # the chunks may appear randomly in either order.
 def get_random_offset(utt_length, length):
     if length > utt_length:
-        sys.exit("code error: length > utt-length")
+        sys.exit(f"code error: length:{length} > utt-length:{utt_length}")
     free_length = utt_length - length
 
     offset = random.randint(0, free_length)

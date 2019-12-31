@@ -263,6 +263,8 @@ def main():
                         args.utt_modifier_type, args.utt_modifier, fields=fields)
     copy_file_if_exists(input_dir + "/utt2lang", output_dir + "/utt2lang",
                         args.utt_modifier_type, args.utt_modifier)
+    copy_file_if_exists(input_dir + "/utt2emo", output_dir + "/utt2emo",
+                        args.utt_modifier_type, args.utt_modifier)
     copy_file_if_exists(input_dir + "/utt2num_frames", output_dir + "/utt2num_frames",
                         args.utt_modifier_type, args.utt_modifier)
     copy_file_if_exists(input_dir + "/text", output_dir + "/text", args.utt_modifier_type,

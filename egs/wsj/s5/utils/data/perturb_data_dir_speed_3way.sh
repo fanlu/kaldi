@@ -51,7 +51,7 @@ echo "$0: making sure the utt2dur and the reco2dur files are present"
 echo "... in ${srcdir}, because obtaining it after speed-perturbing"
 echo "... would be very slow, and you might need them."
 utils/data/get_utt2dur.sh ${srcdir}
-utils/data/get_reco2dur.sh ${srcdir}
+utils/data/get_reco2dur.sh --cmd queue.pl --nj 400  ${srcdir}
 
 utils/data/perturb_data_dir_speed.sh 0.9 ${srcdir} ${destdir}_speed0.9 || exit 1
 utils/data/perturb_data_dir_speed.sh 1.1 ${srcdir} ${destdir}_speed1.1 || exit 1

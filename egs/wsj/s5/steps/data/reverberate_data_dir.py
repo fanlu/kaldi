@@ -444,6 +444,8 @@ def create_reverberated_copy(input_dir,
 
     if os.path.isfile(input_dir + "/text"):
         add_prefix_to_fields(input_dir + "/text", output_dir + "/text", num_replicas, include_original, prefix, field =[0])
+    if os.path.isfile(input_dir + "/utt2emo"):
+        add_prefix_to_fields(input_dir + "/utt2emo", output_dir + "/utt2emo", num_replicas, include_original, prefix, field =[0])
     if os.path.isfile(input_dir + "/segments"):
         add_prefix_to_fields(input_dir + "/segments", output_dir + "/segments", num_replicas, include_original, prefix, field = [0,1])
     if os.path.isfile(input_dir + "/reco2file_and_channel"):

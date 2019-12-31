@@ -157,3 +157,9 @@ GSYMS
 # They are added here to avoid accidently checkin.
 /src/**/CMakeLists.txt
 /build*
+
+.vscode
+src/pybind/fst/*.fst
+src/pybind/fst/*.bin
+src/pybind/fst/*.txt
+src/pybind/test*
