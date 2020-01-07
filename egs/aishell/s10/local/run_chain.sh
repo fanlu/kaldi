@@ -30,13 +30,20 @@ minibatch_size=128
 num_epochs=10
 lr=2e-3
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> pybind11
 hidden_dim=625
 kernel_size_list="1, 3, 3, 3, 3, 3" # comma separated list
 stride_list="1, 1, 3, 1, 1, 1" # comma separated list
 
 log_level=info # valid values: debug, info, warning
 re_inf=false
+
+# true to save network output as kaldi::CompressedMatrix
+# false to save it as kaldi::Matrix<float>
+save_nn_output_as_compressed=false
 
 . ./path.sh
 . ./cmd.sh
@@ -115,6 +122,9 @@ if [[ $stage -le 5 ]]; then
     exp/chain $lat_dir exp/chain/egs
 fi
 
+feat_dim=$(cat exp/chain/egs/info/feat_dim)
+output_dim=$(cat exp/chain/egs/info/num_pdfs)
+
 if [[ $stage -le 6 ]]; then
   echo "merging egs"
   mkdir -p exp/chain/merged_egs
@@ -155,7 +165,7 @@ if [[ $stage -le 8 ]]; then
     --dir exp/chain/train \
     --feat-dim $feat_dim \
     --hidden-dim $hidden_dim \
-    --is-training 1 \
+    --is-training true \
     --kernel-size-list "$kernel_size_list" \
     --log-level $log_level \
     --output-dim $output_dim \
@@ -173,8 +183,8 @@ if [[ $stage -le 9 ]]; then
   echo "inference: computing likelihood"
   for x in test dev; do
     mkdir -p exp/chain/inference/$x
-    if [[ -f exp/chain/inference/$x/confidence.scp && ! re_inf ]]; then
-      echo "exp/chain/inference/$x/confidence.scp already exists! Skip"
+    if [[ -f exp/chain/inference/$x/nnet_output.scp ]]; then
+      echo "exp/chain/inference/$x/nnet_output.scp already exists! Skip"
     else
       # best_epoch=$(cat exp/chain/train/best-epoch-info | grep 'best epoch' | awk '{print $NF}')
       # inference_checkpoint=exp/chain/train/epoch-${best_epoch}.pt
@@ -187,12 +197,13 @@ if [[ $stage -le 9 ]]; then
         --feat-dim $feat_dim \
         --feats-scp data/fbank_pitch/$x/feats.scp \
         --hidden-dim $hidden_dim \
-        --is-training 0 \
+        --is-training false \
         --kernel-size-list "$kernel_size_list" \
         --log-level $log_level \
         --model-left-context $model_left_context \
         --model-right-context $model_right_context \
         --output-dim $output_dim \
+        --save-as-compressed $save_nn_output_as_compressed \
         --stride-list "$stride_list" || exit 1
     fi
   done
@@ -201,8 +212,8 @@ fi
 if [[ $stage -le 10 ]]; then
   echo "decoding"
   for x in test dev; do
-    if [[ ! -f exp/chain/inference/$x/confidence.scp ]]; then
-      echo "exp/chain/inference/$x/confidence.scp does not exist!"
+    if [[ ! -f exp/chain/inference/$x/nnet_output.scp ]]; then
+      echo "exp/chain/inference/$x/nnet_output.scp does not exist!"
       echo "Please run inference.py first"
       exit 1
     fi
@@ -212,7 +223,7 @@ if [[ $stage -le 10 ]]; then
       --nj $nj \
       exp/chain/graph \
       exp/chain/0.trans_mdl \
-      exp/chain/inference/$x/confidence.scp \
+      exp/chain/inference/$x/nnet_output.scp \
       exp/chain/decode_res/$x
   done
 fi

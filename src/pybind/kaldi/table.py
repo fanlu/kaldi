@@ -438,6 +438,7 @@ class VectorWriter(_WriterBase, _BaseFloatVectorWriter):
     '''Table writer for single precision vectors.'''
     pass
 
+
 class CompressedMatrixWriter(_WriterBase, _CompressedMatrixWriter):
     '''Table writer for single precision compressed matrices.'''
     pass

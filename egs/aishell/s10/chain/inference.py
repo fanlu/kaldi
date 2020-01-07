@@ -25,12 +25,10 @@ def main():
     logging.info(' '.join(sys.argv))
 
     if torch.cuda.is_available() == False:
-        logging.error('No GPU detected!')
-        sys.exit(-1)
-
-    kaldi.SelectGpuDevice(device_id=args.device_id)
-    kaldi.CuDeviceAllowMultithreading()
-    device = torch.device('cuda', args.device_id)
+        logging.warning('No GPU detected! Use CPU for inference.')
+        device = torch.device('cpu')
+    else:
+        device = torch.device('cuda', args.device_id)
 
     model = get_chain_model(feat_dim=args.feat_dim,
                             output_dim=args.output_dim,
@@ -45,9 +43,16 @@ def main():
     model.eval()
 
     specifier = 'ark,scp:{filename}.ark,{filename}.scp'.format(
-        filename=os.path.join(args.dir, 'confidence'))
+        filename=os.path.join(args.dir, 'nnet_output'))
 
-    writer = kaldi.MatrixWriter(specifier)
+    if args.save_as_compressed:
+        Writer = kaldi.CompressedMatrixWriter
+        Matrix = kaldi.CompressedMatrix
+    else:
+        Writer = kaldi.MatrixWriter
+        Matrix = kaldi.FloatMatrix
+
+    writer = Writer(specifier)
 
     dataloader = get_feat_dataloader(
         feats_scp=args.feats_scp,
@@ -69,16 +74,17 @@ def main():
             value = value.cpu()
 
             m = kaldi.SubMatrixFromDLPack(to_dlpack(value))
-            m = kaldi.FloatMatrix(m)
+            m = Matrix(m)
             writer.Write(key, m)
 
         if batch_idx % 10 == 0:
             logging.info('Processed batch {}/{} ({:.6f}%)'.format(
                 batch_idx, len(dataloader),
                 float(batch_idx) / len(dataloader) * 100))
+
     writer.Close()
-    logging.info('confidence is saved to {}'.format(
-        os.path.join(args.dir, 'confidence.scp')))
+    logging.info('pseudo-log-likelihood is saved to {}'.format(
+        os.path.join(args.dir, 'nnet_output.scp')))
 
 
 if __name__ == '__main__':
