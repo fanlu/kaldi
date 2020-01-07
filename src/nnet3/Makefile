@@ -16,7 +16,7 @@ TESTFILES = natural-gradient-online-test nnet-graph-test \
 
 OBJFILES = nnet-common.o nnet-compile.o nnet-component-itf.o \
   nnet-simple-component.o nnet-combined-component.o nnet-normalize-component.o \
-  nnet-general-component.o nnet-parse.o natural-gradient-online.o \
+  nnet-general-component.o nnet-self-component.o nnet-parse.o natural-gradient-online.o \
   nnet-descriptor.o nnet-optimize.o nnet-computation.o \
   nnet-computation-graph.o nnet-graph.o am-nnet-simple.o \
   nnet-example.o nnet-nnet.o nnet-compile-utils.o \

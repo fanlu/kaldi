@@ -30,6 +30,7 @@
 #include "nnet3/nnet-attention-component.h"
 #include "nnet3/nnet-parse.h"
 #include "nnet3/nnet-computation-graph.h"
+#include "nnet3/nnet-self-component.h"
 
 
 
@@ -73,6 +74,8 @@ ComponentPrecomputedIndexes* ComponentPrecomputedIndexes::NewComponentPrecompute
     ans = new SpecAugmentTimeMaskComponentPrecomputedIndexes();
   } else if (cpi_type == "TdnnComponentPrecomputedIndexes") {
     ans = new TdnnComponent::PrecomputedIndexes();
+  } else if (cpi_type == "SelfAttentionComponentPrecomputedIndexes") {
+    ans = new SelfAttentionComponentPrecomputedIndexes();
   }
   if (ans != NULL) {
     KALDI_ASSERT(cpi_type == ans->Type());
@@ -189,6 +192,8 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new OutputGruNonlinearityComponent();
   } else if (component_type == "ScaleAndOffsetComponent") {
     ans = new ScaleAndOffsetComponent();
+  } else if (component_type == "SelfAttentionComponent") {
+    ans = new SelfAttentionComponent();
   }
   if (ans != NULL) {
     KALDI_ASSERT(component_type == ans->Type());
