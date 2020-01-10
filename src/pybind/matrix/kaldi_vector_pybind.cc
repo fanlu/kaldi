@@ -63,8 +63,11 @@ void pybind_kaldi_vector(py::module& m) {
                                {v.Dim()},
                                {sizeof(float)});  // strides (in chars)
       })
+      .def(py::init<>())
       .def(py::init<const MatrixIndexT, MatrixResizeType>(), py::arg("size"),
            py::arg("resize_type") = kSetZero)
+      .def("Read", &Vector<float>::Read, "allows resizing", py::arg("is"),
+           py::arg("binary"), py::arg("add") = false)
       .def("to_dlpack", [](py::object obj) { return VectorToDLPack(obj); });
 
   py::class_<SubVector<float>, VectorBase<float>>(m, "FloatSubVector")

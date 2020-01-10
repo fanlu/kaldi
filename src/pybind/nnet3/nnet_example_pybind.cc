@@ -40,4 +40,13 @@ void pybind_nnet_example(py::module& m) {
             "SparseMatrix would be the natural format for posteriors).");
     // TODO(fangjun): other constructors, fields and methods can be wrapped when
   }
+  {
+    using PyClass = NnetExample;
+    py::class_<PyClass>(m, "NnetExample")
+        .def(py::init<>())
+        .def_readwrite("io", &PyClass::io)
+        .def("Compress", &PyClass::Compress,
+             "Compresses the input features (if not compressed)")
+        .def("Read", &PyClass::Read, py::arg("is"), py::arg("binary"));
+  }
 }
