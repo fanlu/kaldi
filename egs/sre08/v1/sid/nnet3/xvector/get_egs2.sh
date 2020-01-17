@@ -46,11 +46,15 @@ nj=6         # This should be set to the maximum number of jobs you are
              # comfortable to run in parallel; you can increase it if your disk
              # speed is greater and you have more machines.
 
+left_context=0
+right_context=0
+
 echo "$0 $@"  # Print the command line for logging
 
 if [ -f path.sh ]; then . ./path.sh; fi
 . parse_options.sh || exit 1;
-
+min_frames_per_chunk=`expr $min_frames_per_chunk + $left_context + $right_context`
+max_frames_per_chunk=`expr $max_frames_per_chunk + $left_context + $right_context`
 if [ $# != 2 ]; then
   echo "Usage: $0 [opts] <data> <egs-dir>"
   echo " e.g.: $0 data/train exp/xvector_a/egs"
@@ -91,7 +95,7 @@ mkdir -p $dir/info $dir/info $dir/temp
 temp=$dir/temp
 
 echo $feat_dim > $dir/info/feat_dim
-echo '28' > $dir/info/left_context
+echo $left_context > $dir/info/left_context
 # The examples have at least min_frames_per_chunk right context.
 echo $min_frames_per_chunk > $dir/info/right_context
 echo '1' > $dir/info/frames_per_eg
@@ -195,19 +199,22 @@ if [ $stage -le 3 ]; then
   for g in $(seq $nj); do
     outputs=$(awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/outputs.$g)
     $cmd $dir/log/train_create_examples.$g.log \
-      nnet3-xvector-mltlab-get-egs --compress=$compress --num-pdfs=$num_pdfs $temp/ranges.$g \
+      nnet3-xvector-mltlab-get-egs --left-context=$left_context --right-context=$right_context \
+      --compress=$compress --num-pdfs=$num_pdfs $temp/ranges.$g \
       "`echo $feats | sed s/JOB/$g/g`" $outputs || touch $dir/.error &
   done
   train_subset_outputs=$(awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/train_subset_outputs.1)
   echo "$0: Generating training subset examples on disk"
   $cmd $dir/log/train_subset_create_examples.1.log \
-    nnet3-xvector-mltlab-get-egs --compress=$compress --num-pdfs=$num_pdfs $temp/train_subset_ranges.1 \
+    nnet3-xvector-mltlab-get-egs --left-context=$left_context --right-context=$right_context \
+    --compress=$compress --num-pdfs=$num_pdfs $temp/train_subset_ranges.1 \
     "$train_subset_feats" $train_subset_outputs || touch $dir/.error &
   wait
   valid_outputs=$(awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/valid_outputs.1)
   echo "$0: Generating validation examples on disk"
   $cmd $dir/log/valid_create_examples.1.log \
-    nnet3-xvector-mltlab-get-egs --compress=$compress --num-pdfs=$num_pdfs $temp/valid_ranges.1 \
+    nnet3-xvector-mltlab-get-egs --left-context=$left_context --right-context=$right_context \
+    --compress=$compress --num-pdfs=$num_pdfs $temp/valid_ranges.1 \
     "$valid_feats" $valid_outputs || touch $dir/.error &
   wait
   if [ -f $dir/.error ]; then

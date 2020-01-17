@@ -82,7 +82,8 @@ static void ProcessRangeFile(const std::string &range_rxfilename,
 static void WriteExamples(const MatrixBase<BaseFloat> &feats,
     const std::vector<ChunkInfo *> &chunks, const std::string &utt,
     bool compress, int32 num_pdfs, int32 *num_egs_written,
-    std::vector<NnetExampleWriter *> *example_writers) {
+    std::vector<NnetExampleWriter *> *example_writers, 
+    int32 left_context, int32 right_context) {
   for (std::vector<ChunkInfo *>::const_iterator it = chunks.begin();
       it != chunks.end(); ++it) {
     ChunkInfo *chunk = *it;
@@ -102,7 +103,7 @@ static void WriteExamples(const MatrixBase<BaseFloat> &feats,
                                  - chunk->num_frames);
       SubMatrix<BaseFloat> chunk_mat(feats, chunk->start_frame + shift,
                                   chunk->num_frames, 0, feat_dim);
-      NnetIo nnet_input = NnetIo("input", 0, chunk_mat);
+      NnetIo nnet_input = NnetIo("input", -left_context, chunk_mat);
       for (std::vector<Index>::iterator indx_it = nnet_input.indexes.begin();
           indx_it != nnet_input.indexes.end(); ++indx_it)
         indx_it->n = 0;
@@ -110,8 +111,8 @@ static void WriteExamples(const MatrixBase<BaseFloat> &feats,
       Posterior label;
       std::vector<std::pair<int32, BaseFloat> > post;
       post.push_back(std::pair<int32, BaseFloat>(chunk->label, 1.0));
-      for (std::vector<Index>::iterator indx_it = nnet_input.indexes.begin();
-          indx_it != nnet_input.indexes.end(); ++indx_it)
+      for (std::vector<Index>::iterator indx_it = nnet_input.indexes.begin()+left_context;
+          indx_it != nnet_input.indexes.end()-right_context; ++indx_it)
         label.push_back(post);
       NnetExample eg;
       eg.io.push_back(nnet_input);
@@ -164,12 +165,18 @@ int main(int argc, char *argv[]) {
 
     bool compress = true;
     int32 num_pdfs = -1;
+    int32 left_context = 0;
+    int32 right_context = 0;
 
     ParseOptions po(usage);
     po.Register("compress", &compress, "If true, write egs in "
                 "compressed format.");
     po.Register("num-pdfs", &num_pdfs, "Number of speakers in the training "
                 "list.");
+    po.Register("left-context", &left_context, "Number of left context in the training "
+                "list.");
+    po.Register("right-context", &right_context, "Number of right context in the training "
+                "list.");  
 
     po.Read(argc, argv);
 
@@ -206,7 +213,7 @@ int main(int argc, char *argv[]) {
       } else {
         std::vector<ChunkInfo *> chunks = got->second;
         WriteExamples(feats, chunks, key, compress, num_pdfs,
-                      &num_egs_written, &example_writers);
+                      &num_egs_written, &example_writers, left_context, right_context);
         num_done++;
       }
     }
