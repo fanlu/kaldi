@@ -36,6 +36,16 @@ void pybind_cu_device(py::module& m) {
         },
         py::arg("device_id"));
 
+  m.def("SelectGpuId",
+        [](const std::string& use_gpu) {
+#if HAVE_CUDA == 1
+          CuDevice::Instantiate().SelectGpuId(use_gpu);
+#else
+          KALDI_LOG << "Kaldi is NOT compiled with GPU! Ignore it.";
+#endif
+        },
+        py::arg("use_gpu"));
+  
   m.def("CuDeviceAllowMultithreading", []() {
 #if HAVE_CUDA == 1
     CuDevice::Instantiate().AllowMultithreading();
@@ -43,4 +53,14 @@ void pybind_cu_device(py::module& m) {
     KALDI_LOG << "Kaldi is NOT compiled with GPU! Ignore it.";
 #endif
   });
+
+  m.def("CudaCompiled",
+        []() -> bool {
+#if HAVE_CUDA == 1
+          return true;
+#else
+          return false;
+#endif
+        },
+        "true if kaldi is compiled with GPU support; false otherwise");
 }

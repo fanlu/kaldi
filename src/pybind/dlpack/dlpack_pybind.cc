@@ -32,6 +32,20 @@ namespace {
 
 using namespace kaldi;
 
+template <typename>
+struct TypeToCode;
+
+#define TYPE_TO_CODE(type, code)       \
+  template <>                          \
+  struct TypeToCode<type> {            \
+    static constexpr int value = code; \
+  };
+
+TYPE_TO_CODE(int, kDLInt);  // TODO(fangjun): add int8, int16 when needed
+TYPE_TO_CODE(float, kDLFloat);
+
+#undef TYPE_TO_CODE
+
 // refer to
 // https://github.com/pytorch/pytorch/blob/master/torch/csrc/Module.cpp#L375
 // https://github.com/microsoft/onnxruntime-tvm/blob/master/python/tvm/_ffi/_ctypes/ndarray.py#L28
@@ -46,9 +60,9 @@ const char* kDLPackTensorName = "dltensor";
 // PyTorch, TVM and CuPy name the used dltensor to be `used_dltensor`
 const char* kDLPackUsedTensorName = "used_dltensor";
 
-DLManagedTensor* CreateDLManagedtensor(DLDeviceType device_type, int device_id,
+DLManagedTensor* CreateDLManagedTensor(DLDeviceType device_type, int device_id,
                                        void* data) {
-  // As SubVector/SubMatrix/CuSubVector/CuSumMatrix
+  // As SubVector/SubMatrix/CuSubVector/CuSubMatrix
   // all require a DLManagedTensor, we put the shared
   // code here to avoid duplicates
 
@@ -79,7 +93,8 @@ DLManagedTensor* CreateDLManagedtensor(DLDeviceType device_type, int device_id,
   return managed_tensor;
 }
 
-DLManagedTensor* ConsumeDLManagedtensor(py::capsule* capsule,
+template <typename DType>
+DLManagedTensor* ConsumeDLManagedTensor(py::capsule* capsule,
                                         DLDeviceType device_type, int device_id,
                                         int ndim) {
   // check the name of the capsule
@@ -104,8 +119,8 @@ DLManagedTensor* ConsumeDLManagedtensor(py::capsule* capsule,
   KALDI_ASSERT(tensor->ndim == ndim);
 
   // we support only float (single precision, 32-bit) tensor
-  KALDI_ASSERT(tensor->dtype.code == kDLFloat);
-  KALDI_ASSERT(tensor->dtype.bits == 32);
+  KALDI_ASSERT(tensor->dtype.code == TypeToCode<DType>::value);
+  KALDI_ASSERT(tensor->dtype.bits == sizeof(DType) * 8);
   KALDI_ASSERT(tensor->dtype.lanes == 1);
 
   auto* ctx = &tensor->ctx;
@@ -138,37 +153,10 @@ void DLPackCapsuleDestructor(PyObject* data) {
   }
 }
 
-}  // namespace
-
-namespace kaldi {
-
-py::capsule VectorToDLPack(py::object obj) {
-  auto* v = obj.cast<Vector<float>*>();
-  auto* managed_tensor = CreateDLManagedtensor(kDLCPU, 0, v->Data());
-  auto* tensor = &managed_tensor->dl_tensor;
-
-  tensor->ndim = 1;
-
-  // `shape` and `strides` are freed in `DLManagedTensorDeleter`, so
-  // no memory leak here .
-  tensor->shape = new int64_t[1];
-  tensor->shape[0] = v->Dim();
-
-  tensor->strides = new int64_t[1];
-  tensor->strides[0] = 1;
-
-  managed_tensor->manager_ctx = obj.ptr();
-  obj.inc_ref();  // increase it since the above line borrows it
-
-  PyObject* capsule =
-      PyCapsule_New(managed_tensor, kDLPackTensorName, DLPackCapsuleDestructor);
-  bool is_borrowed = false;
-  return py::object(capsule, is_borrowed);
-}
-
-py::capsule MatrixToDLPack(py::object obj) {
-  auto* m = obj.cast<Matrix<float>*>();
-  auto* managed_tensor = CreateDLManagedtensor(kDLCPU, 0, m->Data());
+// Both Matrix and CuMatrix will share this template
+template <typename M>
+py::capsule MatrixToDLPackImpl(const M* m, py::object* obj,
+                               DLManagedTensor* managed_tensor) {
   auto* tensor = &managed_tensor->dl_tensor;
 
   tensor->ndim = 2;
@@ -183,8 +171,8 @@ py::capsule MatrixToDLPack(py::object obj) {
   tensor->strides[0] = m->Stride();
   tensor->strides[1] = 1;
 
-  managed_tensor->manager_ctx = obj.ptr();
-  obj.inc_ref();  // increase it since the above line borrows it
+  managed_tensor->manager_ctx = obj->ptr();
+  obj->inc_ref();  // increase it since the above line borrows it
 
   PyObject* capsule =
       PyCapsule_New(managed_tensor, kDLPackTensorName, DLPackCapsuleDestructor);
@@ -192,75 +180,79 @@ py::capsule MatrixToDLPack(py::object obj) {
   return py::object(capsule, is_borrowed);
 }
 
-py::capsule CuVectorToDLPack(py::object obj) {
-#if HAVE_CUDA == 1
-  auto* v = obj.cast<CuVector<float>*>();
-  auto* managed_tensor =
-      CreateDLManagedtensor(kDLGPU, CuDevice::GetCurrentDeviceId(), v->Data());
-
+template <typename V>
+py::capsule VectorToDLPackImpl(const V* v, py::object* obj,
+                               DLManagedTensor* managed_tensor) {
   auto* tensor = &managed_tensor->dl_tensor;
 
   tensor->ndim = 1;
 
-  // `shape` and `strides` are freed in `DLManagedTensorDeleter`,
-  // so no memory leak here.
+  // `shape` and `strides` are freed in `DLManagedTensorDeleter`, so
+  // no memory leak here .
   tensor->shape = new int64_t[1];
   tensor->shape[0] = v->Dim();
 
   tensor->strides = new int64_t[1];
   tensor->strides[0] = 1;
 
-  managed_tensor->manager_ctx = obj.ptr();
-  obj.inc_ref();  // increase it since the above line borrows it
+  managed_tensor->manager_ctx = obj->ptr();
+  obj->inc_ref();  // increase it since the above line borrows it
 
   PyObject* capsule =
       PyCapsule_New(managed_tensor, kDLPackTensorName, DLPackCapsuleDestructor);
   bool is_borrowed = false;
   return py::object(capsule, is_borrowed);
-#else
-  KALDI_ERR << "Kaldi is not compiled with GPU!";
-  return py::none();
-#endif
 }
 
-py::capsule CuMatrixToDLPack(py::object obj) {
+}  // namespace
+
+namespace kaldi {
+
+py::capsule VectorToDLPack(py::object* obj) {
+  auto* v = obj->cast<Vector<float>*>();
+  auto* managed_tensor = CreateDLManagedTensor(kDLCPU, 0, v->Data());
+  return VectorToDLPackImpl(v, obj, managed_tensor);
+}
+
+py::capsule MatrixToDLPack(py::object* obj) {
+  auto* m = obj->cast<Matrix<float>*>();
+  auto* managed_tensor = CreateDLManagedTensor(kDLCPU, 0, m->Data());
+  return MatrixToDLPackImpl(m, obj, managed_tensor);
+}
+
+py::capsule CuVectorToDLPack(py::object* obj) {
+  auto* v = obj->cast<CuVector<float>*>();
 #if HAVE_CUDA == 1
-  auto* m = obj.cast<CuMatrix<float>*>();
+  KALDI_ASSERT(CuDevice::Instantiate().Enabled());
 
   auto* managed_tensor =
-      CreateDLManagedtensor(kDLGPU, CuDevice::GetCurrentDeviceId(), m->Data());
-
-  auto* tensor = &managed_tensor->dl_tensor;
-
-  tensor->ndim = 2;
-
-  // `shape` and `strides` are freed in `DLManagedTensorDeleter`,
-  // so no memory leak here
-  tensor->shape = new int64_t[2];
-  tensor->shape[0] = m->NumRows();
-  tensor->shape[1] = m->NumCols();
-
-  tensor->strides = new int64_t[2];
-  tensor->strides[0] = m->Stride();
-  tensor->strides[1] = 1;
-
-  managed_tensor->manager_ctx = obj.ptr();
-  obj.inc_ref();  // increase it since the above line borrows it
-
-  PyObject* capsule =
-      PyCapsule_New(managed_tensor, kDLPackTensorName, DLPackCapsuleDestructor);
-  bool is_borrowed = false;
-  return py::object(capsule, is_borrowed);
+      CreateDLManagedTensor(kDLGPU, CuDevice::GetCurrentDeviceId(), v->Data());
 #else
-  KALDI_ERR << "Kaldi is not compiled with GPU!";
-  return py::none();
+  // kaldi is not compiled with GPU, return a CPU tensor
+  auto* managed_tensor = CreateDLManagedTensor(kDLCPU, 0, v->Data());
 #endif
+
+  return VectorToDLPackImpl(v, obj, managed_tensor);
 }
 
-// As the destructor of `VectorBase<float>` is not `virtual`
-// we cannot return a `VectorBase<float>*` or `SubVector<float>*`.
-DLPackSubVector<float>* SubVectorFromDLPack(py::capsule* capsule) {
-  auto* managed_tensor = ConsumeDLManagedtensor(capsule, kDLCPU, 0, 1);
+py::capsule CuMatrixToDLPack(py::object* obj) {
+  auto* m = obj->cast<CuMatrix<float>*>();
+#if HAVE_CUDA == 1
+  KALDI_ASSERT(CuDevice::Instantiate().Enabled());
+
+  auto* managed_tensor =
+      CreateDLManagedTensor(kDLGPU, CuDevice::GetCurrentDeviceId(), m->Data());
+#else
+  // kaldi is not compiled with GPU, return a CPU tensor
+  auto* managed_tensor = CreateDLManagedTensor(kDLCPU, 0, m->Data());
+#endif
+
+  return MatrixToDLPackImpl(m, obj, managed_tensor);
+}
+
+template <typename DType>
+DLPackSubVector<DType>* SubVectorFromDLPack(py::capsule* capsule) {
+  auto* managed_tensor = ConsumeDLManagedTensor<DType>(capsule, kDLCPU, 0, 1);
   auto* tensor = &managed_tensor->dl_tensor;
 
   // we use `py::return_value_policy::take_ownership`
@@ -272,12 +264,12 @@ DLPackSubVector<float>* SubVectorFromDLPack(py::capsule* capsule) {
   // operator delete()) due to the implied ownership."
   //
   // Therefore, we use `new` instead of `malloc` with `placement new` here.
-  return new DLPackSubVector<float>(reinterpret_cast<float*>(tensor->data),
+  return new DLPackSubVector<DType>(reinterpret_cast<DType*>(tensor->data),
                                     tensor->shape[0], managed_tensor);
 }
 
 DLPackSubMatrix<float>* SubMatrixFromDLPack(py::capsule* capsule) {
-  auto* managed_tensor = ConsumeDLManagedtensor(capsule, kDLCPU, 0, 2);
+  auto* managed_tensor = ConsumeDLManagedTensor<float>(capsule, kDLCPU, 0, 2);
   auto* tensor = &managed_tensor->dl_tensor;
 
   // DLPack assumes row major, so we use strides[0]
@@ -288,41 +280,59 @@ DLPackSubMatrix<float>* SubMatrixFromDLPack(py::capsule* capsule) {
 
 DLPackCuSubVector<float>* CuSubVectorFromDLPack(py::capsule* capsule) {
 #if HAVE_CUDA == 1
-  auto* managed_tensor = ConsumeDLManagedtensor(
+  // no need to check CuDevice::Instantiate().Enabled()
+  // since `ConsumeDLManagedTensor` will check the device id
+  auto* managed_tensor = ConsumeDLManagedTensor<float>(
       capsule, kDLGPU, CuDevice::GetCurrentDeviceId(), 1);
+#else
+  // Kaldi is not compiled with GPU, so we expect the passed capsule
+  // to be a CPU tensor; if not, `ConsumeDLManagedTensor` will throw
+  auto* managed_tensor = ConsumeDLManagedTensor<float>(capsule, kDLCPU, 0, 1);
+#endif
+
   auto* tensor = &managed_tensor->dl_tensor;
 
   return new DLPackCuSubVector<float>(reinterpret_cast<float*>(tensor->data),
                                       tensor->shape[0], managed_tensor);
-#else
-  KALDI_ERR << "Kaldi is not compiled with GPU!";
-  return nullptr;
-#endif
 }
 
 DLPackCuSubMatrix<float>* CuSubMatrixFromDLPack(py::capsule* capsule) {
 #if HAVE_CUDA == 1
-  auto* managed_tensor = ConsumeDLManagedtensor(
+  // no need to check CuDevice::Instantiate().Enabled()
+  // since `ConsumeDLManagedTensor` will check the device id
+  auto* managed_tensor = ConsumeDLManagedTensor<float>(
       capsule, kDLGPU, CuDevice::GetCurrentDeviceId(), 2);
+#else
+  // Kaldi is not compiled with GPU, so we expect the passed capsule
+  // to be a CPU tensor; if not, `ConsumeDLManagedTensor` will throw
+  auto* managed_tensor = ConsumeDLManagedTensor<float>(capsule, kDLCPU, 0, 2);
+#endif
+
   auto* tensor = &managed_tensor->dl_tensor;
 
   // DLPack assumes row major, so we use strides[0]
   return new DLPackCuSubMatrix<float>(reinterpret_cast<float*>(tensor->data),
                                       tensor->shape[0], tensor->shape[1],
                                       tensor->strides[0], managed_tensor);
-#else
-  KALDI_ERR << "Kaldi is not compiled with GPU!";
-  return nullptr;
-#endif
 }
+
+template DLPackSubVector<float>* SubVectorFromDLPack(py::capsule* capsule);
+template DLPackSubVector<int>* SubVectorFromDLPack(py::capsule* capsule);
 
 }  // namespace kaldi
 
 using namespace kaldi;
 
 void pybind_dlpack(py::module& m) {
-  m.def("SubVectorFromDLPack",
-        [](py::capsule* capsule) { return SubVectorFromDLPack(capsule); },
+  pybind_DL_subvector(m);
+
+  m.def(
+      "FloatSubVectorFromDLPack",
+      [](py::capsule* capsule) { return SubVectorFromDLPack<float>(capsule); },
+      py::return_value_policy::take_ownership);
+
+  m.def("IntSubVectorFromDLPack",
+        [](py::capsule* capsule) { return SubVectorFromDLPack<int>(capsule); },
         py::return_value_policy::take_ownership);
   // we use `take_ownership` because it returns a pointer created with `new`
   // and we want to transfer the ownership of the pointer to Python.

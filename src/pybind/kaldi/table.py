@@ -26,9 +26,15 @@ import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.pardir))
 
+import numpy as np
+
+import kaldi_pybind
 from kaldi_pybind.nnet3 import _SequentialNnetChainExampleReader
 from kaldi_pybind.nnet3 import _RandomAccessNnetChainExampleReader
 from kaldi_pybind.nnet3 import _NnetChainExampleWriter
+
+from kaldi_pybind.nnet3 import _SequentialNnetExampleReader
+from kaldi_pybind.nnet3 import _RandomAccessNnetExampleReader
 
 from kaldi_pybind.feat import _SequentialWaveReader
 from kaldi_pybind.feat import _RandomAccessWaveReader
@@ -44,6 +50,18 @@ from kaldi_pybind import _RandomAccessBaseFloatVectorReader
 from kaldi_pybind import _BaseFloatVectorWriter
 
 from kaldi_pybind import _CompressedMatrixWriter
+
+from kaldi_pybind import _SequentialInt32VectorReader
+from kaldi_pybind import _RandomAccessInt32VectorReader
+from kaldi_pybind import _Int32VectorWriter
+
+from kaldi_pybind import _SequentialLatticeReader
+from kaldi_pybind import _RandomAccessLatticeReader
+from kaldi_pybind import _LatticeWriter
+
+from kaldi_pybind import _SequentialCompactLatticeReader
+from kaldi_pybind import _RandomAccessCompactLatticeReader
+from kaldi_pybind import _CompactLatticeWriter
 
 ################################################################################
 # Sequential Readers
@@ -75,6 +93,10 @@ class _SequentialReaderBase(object):
 
     def __enter__(self):
         return self
+
+    def __exit__(self, type, value, traceback):
+        if self.IsOpen():
+            self.Close()
 
     def __iter__(self):
         while not self.Done():
@@ -175,6 +197,11 @@ class SequentialNnetChainExampleReader(_SequentialReaderBase,
     '''Sequential table reader for nnet chain examples.'''
     pass
 
+class SequentialNnetExampleReader(_SequentialReaderBase,
+                                  _SequentialNnetExampleReader):
+    '''Sequential table reader for nnet examples.'''
+    pass
+
 
 class SequentialWaveReader(_SequentialReaderBase, _SequentialWaveReader):
     '''Sequential table reader for wave files.'''
@@ -196,6 +223,23 @@ class SequentialMatrixReader(_SequentialReaderBase,
 class SequentialVectorReader(_SequentialReaderBase,
                              _SequentialBaseFloatVectorReader):
     '''Sequential table reader for single precision vectors.'''
+    pass
+
+
+class SequentialIntVectorReader(_SequentialReaderBase,
+                                _SequentialInt32VectorReader):
+    '''Sequential table reader for integer sequences.'''
+    pass
+
+
+class SequentialLatticeReader(_SequentialReaderBase, _SequentialLatticeReader):
+    '''Sequential table reader for lattices.'''
+    pass
+
+
+class SequentialCompactLatticeReader(_SequentialReaderBase,
+                                     _SequentialCompactLatticeReader):
+    '''Sequential table reader for compact lattices.'''
     pass
 
 
@@ -229,6 +273,10 @@ class _RandomAccessReaderBase(object):
 
     def __enter__(self):
         return self
+
+    def __exit__(self, type, value, traceback):
+        if self.IsOpen():
+            self.Close()
 
     def __contains__(self, key):
         return self.HasKey(key)
@@ -310,6 +358,10 @@ class RandomAccessNnetChainExampleReader(_RandomAccessReaderBase,
     '''Random access table reader for nnet chain examples.'''
     pass
 
+class RandomAccessNnetExampleReader(_RandomAccessReaderBase,
+                                    _RandomAccessNnetExampleReader):
+    '''Random access table reader for nnet examples.'''
+    pass
 
 class RandomAccessWaveReader(_RandomAccessReaderBase, _RandomAccessWaveReader):
     '''Random access table reader for wave files.'''
@@ -331,6 +383,24 @@ class RandomAccessMatrixReader(_RandomAccessReaderBase,
 class RandomAccessVectorReader(_RandomAccessReaderBase,
                                _RandomAccessBaseFloatVectorReader):
     '''Random access table reader for single precision vectors.'''
+    pass
+
+
+class RandomAccessIntVectorReader(_RandomAccessReaderBase,
+                                  _RandomAccessInt32VectorReader):
+    '''Random access table reader for integer sequences.'''
+    pass
+
+
+class RandomAccessLatticeReader(_RandomAccessReaderBase,
+                                _RandomAccessLatticeReader):
+    '''Random access table reader for lattices.'''
+    pass
+
+
+class RandomAccessCompactLatticeReader(_RandomAccessReaderBase,
+                                       _RandomAccessCompactLatticeReader):
+    '''Random access table reader for compact lattices.'''
     pass
 
 
@@ -367,6 +437,10 @@ class _WriterBase(object):
     def __enter__(self):
         return self
 
+    def __exit__(self, type, value, traceback):
+        if self.IsOpen():
+            self.Close()
+    
     def __setitem__(self, key, value):
         self.Write(key, value)
 
@@ -431,16 +505,41 @@ class NnetChainExampleWriter(_WriterBase, _NnetChainExampleWriter):
 
 class MatrixWriter(_WriterBase, _BaseFloatMatrixWriter):
     '''Table writer for single precision matrices.'''
-    pass
+
+    def Write(self, key, value):
+        if isinstance(value, np.ndarray):
+            m = kaldi_pybind.FloatSubMatrix(value)
+            value = kaldi_pybind.FloatMatrix(m)
+        super().Write(key, value)
 
 
 class VectorWriter(_WriterBase, _BaseFloatVectorWriter):
     '''Table writer for single precision vectors.'''
-    pass
+
+    def Write(self, key, value):
+        if isinstance(value, np.ndarray):
+            v = kaldi_pybind.FloatSubVector(value)
+            value = kaldi_pybind.FloatVector(v)
+        super().Write(key, value)
 
 
 class CompressedMatrixWriter(_WriterBase, _CompressedMatrixWriter):
     '''Table writer for single precision compressed matrices.'''
+    pass
+
+
+class IntVectorWriter(_WriterBase, _Int32VectorWriter):
+    '''Table writer for integer sequences.'''
+    pass
+
+
+class LatticeWriter(_WriterBase, _LatticeWriter):
+    '''Table writer for lattices.'''
+    pass
+
+
+class CompactLatticeWriter(_WriterBase, _CompactLatticeWriter):
+    '''Table writer for compact lattices.'''
     pass
 
 
@@ -485,21 +584,6 @@ if False:
         '''Sequential table reader for FSTs over the KWS index semiring.'''
         pass
 
-    class SequentialLatticeReader(_SequentialReaderBase,
-                                  _kaldi_table.SequentialLatticeReader):
-        '''Sequential table reader for lattices.'''
-        pass
-
-    class SequentialCompactLatticeReader(
-            _SequentialReaderBase, _kaldi_table.SequentialCompactLatticeReader):
-        '''Sequential table reader for compact lattices.'''
-        pass
-
-    class SequentialNnetExampleReader(_SequentialReaderBase,
-                                      _kaldi_table.SequentialNnetExampleReader):
-        '''Sequential table reader for nnet examples.'''
-        pass
-
     class SequentialRnnlmExampleReader(_SequentialReaderBase,
                                        _kaldi_table.SequentialRnnlmExampleReader
                                       ):
@@ -524,11 +608,6 @@ if False:
     class SequentialBoolReader(_SequentialReaderBase,
                                _kaldi_table.SequentialBoolReader):
         '''Sequential table reader for Booleans.'''
-        pass
-
-    class SequentialIntVectorReader(_SequentialReaderBase,
-                                    _kaldi_table.SequentialIntVectorReader):
-        '''Sequential table reader for integer sequences.'''
         pass
 
     class SequentialIntVectorVectorReader(
@@ -586,23 +665,6 @@ if False:
         '''Random access table reader for FSTs over the KWS index semiring.'''
         pass
 
-    class RandomAccessLatticeReader(_RandomAccessReaderBase,
-                                    _kaldi_table.RandomAccessLatticeReader):
-        '''Random access table reader for lattices.'''
-        pass
-
-    class RandomAccessCompactLatticeReader(
-            _RandomAccessReaderBase,
-            _kaldi_table.RandomAccessCompactLatticeReader):
-        '''Random access table reader for compact lattices.'''
-        pass
-
-    class RandomAccessNnetExampleReader(
-            _RandomAccessReaderBase,
-            _kaldi_table.RandomAccessNnetExampleReader):
-        '''Random access table reader for nnet examples.'''
-        pass
-
     class RandomAccessIntReader(_RandomAccessReaderBase,
                                 _kaldi_table.RandomAccessIntReader):
         '''Random access table reader for integers.'''
@@ -621,11 +683,6 @@ if False:
     class RandomAccessBoolReader(_RandomAccessReaderBase,
                                  _kaldi_table.RandomAccessBoolReader):
         '''Random access table reader for Booleans.'''
-        pass
-
-    class RandomAccessIntVectorReader(_RandomAccessReaderBase,
-                                      _kaldi_table.RandomAccessIntVectorReader):
-        '''Random access table reader for integer sequences.'''
         pass
 
     class RandomAccessIntVectorVectorReader(
@@ -854,14 +911,6 @@ if False:
         '''Table writer for FSTs over the KWS index semiring.'''
         pass
 
-    class LatticeWriter(_WriterBase, _kaldi_table.LatticeWriter):
-        '''Table writer for lattices.'''
-        pass
-
-    class CompactLatticeWriter(_WriterBase, _kaldi_table.CompactLatticeWriter):
-        '''Table writer for compact lattices.'''
-        pass
-
     class NnetExampleWriter(_WriterBase, _kaldi_table.NnetExampleWriter):
         '''Table writer for nnet examples.'''
         pass
@@ -884,10 +933,6 @@ if False:
 
     class BoolWriter(_WriterBase, _kaldi_table.BoolWriter):
         '''Table writer for Booleans.'''
-        pass
-
-    class IntVectorWriter(_WriterBase, _kaldi_table.IntVectorWriter):
-        '''Table writer for integer sequences.'''
         pass
 
     class IntVectorVectorWriter(_WriterBase,

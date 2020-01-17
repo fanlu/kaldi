@@ -66,9 +66,13 @@ void pybind_kaldi_vector(py::module& m) {
       .def(py::init<>())
       .def(py::init<const MatrixIndexT, MatrixResizeType>(), py::arg("size"),
            py::arg("resize_type") = kSetZero)
-      .def("Read", &Vector<float>::Read, "allows resizing", py::arg("is"),
-           py::arg("binary"), py::arg("add") = false)
-      .def("to_dlpack", [](py::object obj) { return VectorToDLPack(obj); });
+      .def(py::init<const VectorBase<float>&>(), py::arg("v"),
+           "Copy-constructor from base-class, needed to copy from SubVector.")
+      .def("Read", &Vector<float>::Read,
+           "Reads from C++ stream (option to add to existing contents).Throws "
+           "exception on failure",
+           py::arg("in"), py::arg("binary"), py::arg("add") = false)
+      .def("to_dlpack", [](py::object obj) { return VectorToDLPack(&obj); });
 
   py::class_<SubVector<float>, VectorBase<float>>(m, "FloatSubVector")
       .def(py::init([](py::buffer b) {
@@ -89,6 +93,8 @@ void pybind_kaldi_vector(py::module& m) {
   py::class_<DLPackSubVector<float>, SubVector<float>>(m,
                                                        "DLPackFloatSubVector")
       .def("from_dlpack",
-           [](py::capsule* capsule) { return SubVectorFromDLPack(capsule); },
+           [](py::capsule* capsule) {
+             return SubVectorFromDLPack<float>(capsule);
+           },
            py::return_value_policy::take_ownership);
 }
