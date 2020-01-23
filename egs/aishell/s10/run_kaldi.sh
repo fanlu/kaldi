@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Copyright 2019-2020 Mobvoi AI Lab, Beijing, China (author: Fangjun Kuang)
+# Copyright 2019 Mobvoi AI Lab, Beijing, China (author: Fangjun Kuang)
+#           2020 Xiaomi Corporation (author: Haowen Qiu)
 # Apache 2.0
 
 # This file demonstrates how to run LF-MMI training in PyTorch
@@ -11,7 +12,7 @@
 # You also need a GPU to run this example.
 #
 # PyTorch with version `1.3.0dev20191006` has been tested and is
-# guaranteed to work.
+# known to work.
 #
 # Note that we have used Tensorboard to visualize the training loss.
 # You do **NOT** need to install TensorFlow to use Tensorboard.
@@ -19,14 +20,13 @@
 . ./cmd.sh
 . ./path.sh
 
-data=/mnt/cfs2/asr/database/AM/aishell
+data=/home/asr-corpus/public/aishell
 data_url=www.openslr.org/resources/33
 
-nj=10
+nj=30
 
-stage=0
+stage=15
 
-. utils/parse_options.sh || exit 1;
 if [[ $stage -le 0 ]]; then
   local/download_and_untar.sh $data $data_url data_aishell || exit 1
   local/download_and_untar.sh $data $data_url resource_aishell || exit 1
@@ -58,7 +58,7 @@ fi
 mfccdir=mfcc
 if [[ $stage -le 5 ]]; then
   for x in train dev test; do
-    steps/make_mfcc_pitch.sh --cmd "$train_cmd" --nj $nj \
+    steps/make_mfcc.sh --cmd "$train_cmd" --nj $nj \
       data/$x exp/make_mfcc/$x $mfccdir || exit 1
     steps/compute_cmvn_stats.sh data/$x exp/make_mfcc/$x $mfccdir || exit 1
     utils/fix_data_dir.sh data/$x || exit 1
@@ -86,8 +86,8 @@ if [[ $stage -le 9 ]]; then
 fi
 
 if [[ $stage -le 10 ]]; then
-  steps/train_deltas.sh --cmd "$train_cmd" \
-   2500 20000 data/train data/lang exp/tri1_ali exp/tri2 || exit 1
+  steps/train_lda_mllt.sh --cmd "$train_cmd" \
+   3000 40000 data/train data/lang exp/tri1_ali exp/tri2 || exit 1
 fi
 
 if [[ $stage -le 11 ]]; then
@@ -96,48 +96,25 @@ if [[ $stage -le 11 ]]; then
 fi
 
 if [[ $stage -le 12 ]]; then
-  steps/train_lda_mllt.sh --cmd "$train_cmd" \
-   2500 20000 data/train data/lang exp/tri2_ali exp/tri3a || exit 1
+  steps/train_sat.sh --cmd "$train_cmd" \
+   4000 80000 data/train data/lang exp/tri2_ali exp/tri3 || exit 1
 fi
 
 if [[ $stage -le 13 ]]; then
-  steps/align_fmllr.sh --cmd "$train_cmd" --nj $nj \
-    data/train data/lang exp/tri3a exp/tri3a_ali || exit 1
+  local/run_cleanup_segmentation.sh
 fi
 
-if [[ $stage -le 14 ]]; then
-  steps/align_fmllr_lats.sh --nj $nj --cmd "$train_cmd" data/train \
-    data/lang exp/tri3a exp/tri3a_lats
-  rm exp/tri3a_lats/fsts.*.gz # save space
-fi
+#if [[ $stage -le 14 ]]; then
+  #steps/align_fmllr_lats.sh --nj $nj --cmd "$train_cmd" data/train \
+   # data/lang exp/tri3a exp/tri3a_lats
+  #rm exp/tri3a_lats/fsts.*.gz # save space
+#fi
+
+#echo "$0: success."
+#exit 0
 
 if [[ $stage -le 15 ]]; then
-  steps/align_fmllr.sh  --cmd $train_cmd --nj $nj \
-    data/train data/lang exp/tri4a exp/tri4a_ali
-fi
-
-if [[ $stage -le 16 ]]; then
-  steps/train_sat.sh --cmd $train_cmd \
-    3500 100000 data/train data/lang exp/tri4a_ali exp/tri5a || exit 1
-fi
-
-if [[ $stage -le 17 ]]; then
-  steps/align_fmllr.sh --cmd $train_cmd --nj $nj \
-    data/train data/lang exp/tri5a exp/tri5a_ali || exit 1
-fi
-
-if [[ $stage -le 18 ]]; then
-  steps/align_fmllr_lats.sh --nj $nj --cmd $train_cmd data/train \
-    data/lang exp/tri5a exp/tri5a_lats
-  rm exp/tri5a_lats/fsts.*.gz # save space
-fi
-
-if [[ $stage -le 19 ]]; then
-  # kaldi pybind LF-MMI training with PyTorch
-  ./local/run_chain.sh --nj $nj
-fi
-
-if [[ $stage -le 20 ]]; then
-  # kaldi nnet3 LF-MMI training
-  ./local/run_tdnn_1b.sh --nj $nj
+  #local/run_tdnn_1d.sh
+  local/run_tdnn_1c.sh
+  #./local/run_chain.sh --nj $nj
 fi
