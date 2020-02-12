@@ -187,13 +187,13 @@ class FactorizedTDNN(nn.Module):
 
         # save it for skip connection
         input_x = x
-        logging.info(f"input_x shape is {input_x.shape}")
+        logging.debug(f"input_x shape is {input_x.shape}")
         x = self.linear(x)
-        logging.info(f"x shape after linear is {x.shape}")
+        logging.debug(f"x shape after linear is {x.shape}")
         # at this point, x is [N, C, T]
 
         x = self.affine(x)
-        logging.info(f"x shape after affine is {x.shape}")
+        logging.debug(f"x shape after affine is {x.shape}")
         # at this point, x is [N, C, T]
 
         x = F.relu(x)

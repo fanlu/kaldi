@@ -20,8 +20,8 @@ def get_chain_model(feat_dim,
                     hidden_dim,
                     bottleneck_dim,
                     prefinal_bottleneck_dim,
-                    time_stride_list,
-                    conv_stride_list,
+                    kernel_size_list,
+                    subsampling_factor_list,
                     lda_mat_filename=None):
     model = ChainModel(feat_dim=feat_dim,
                        output_dim=output_dim,
@@ -29,8 +29,8 @@ def get_chain_model(feat_dim,
                        hidden_dim=hidden_dim,
                        bottleneck_dim=bottleneck_dim,
                        prefinal_bottleneck_dim=prefinal_bottleneck_dim,
-                       time_stride_list=time_stride_list,
-                       conv_stride_list=conv_stride_list)
+                       kernel_size_list=kernel_size_list,
+                       subsampling_factor_list=subsampling_factor_list)
     return model
 
 
@@ -224,6 +224,7 @@ if __name__ == '__main__':
     feat_dim = 43
     output_dim = 4344
     model = ChainModel(feat_dim=feat_dim, output_dim=output_dim)
+    logging.info(model)
     N = 1
     T = 150 + 27 + 27
     C = feat_dim * 3
