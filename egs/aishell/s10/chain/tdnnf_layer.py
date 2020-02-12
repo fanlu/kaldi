@@ -163,7 +163,7 @@ class FactorizedTDNN(nn.Module):
 
         self.bypass_scale = bypass_scale
 
-        self.subsampling_factor = subsampling_factor
+        self.s = subsampling_factor
 
         # linear requires [N, C, T]
         self.linear = OrthonormalLinear(dim=dim,
@@ -207,9 +207,9 @@ class FactorizedTDNN(nn.Module):
         # TODO(fangjun): implement GeneralDropoutComponent in PyTorch
 
         if self.linear.kernel_size == 2:
-            x = self.bypass_scale * input_x[:, :, self.subsampling_factor:-self.subsampling_factor:self.subsampling_factor] + x
+            x = self.bypass_scale * input_x[:, :, self.s:-self.s:self.s] + x
         else:
-            x = self.bypass_scale * input_x[:, :, ::self.subsampling_factor] + x
+            x = self.bypass_scale * input_x[:, :, ::self.s] + x
         return x
 
     def constrain_orthonormal(self):
