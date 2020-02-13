@@ -33,6 +33,7 @@ def get_egs_dataloader(egs_dir, egs_left_context, egs_right_context):
     dataloader = DataLoader(dataset,
                             batch_size=batch_size,
                             num_workers=0,
+                            shuffle=True,
                             collate_fn=collate_fn)
     return dataloader
 
