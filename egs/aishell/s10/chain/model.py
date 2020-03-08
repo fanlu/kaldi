@@ -110,13 +110,17 @@ class ChainModel(nn.Module):
                                               affine=False)
 
         tdnnfs = []
+        bypass_scale = 0.7
         for i in range(num_layers):
             kernel_size = kernel_size_list[i]
             subsampling_factor = subsampling_factor_list[i]
+            if i >= num_layers // 2:
+                bypass_scale = 0.3
             layer = FactorizedTDNN(dim=hidden_dim,
                                    bottleneck_dim=bottleneck_dim,
                                    kernel_size=kernel_size,
-                                   subsampling_factor=subsampling_factor)
+                                   subsampling_factor=subsampling_factor,
+                                   bypass_scale=bypass_scale)
             tdnnfs.append(layer)
 
         # tdnnfs requires [N, C, T]
