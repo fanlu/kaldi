@@ -18,13 +18,12 @@
 // limitations under the License.
 
 #include "feat/wave-reader.h"
+#include "online2/online-endpoint.h"
 #include "online2/online-nnet2-decoding.h"
 #include "online2/online-nnet2-feature-pipeline.h"
-#include "online2/onlinebin-util.h"
 #include "online2/online-timing.h"
-#include "online2/online-endpoint.h"
+#include "online2/onlinebin-util.h"
 #include "util/kaldi-thread.h"
-
 
 int main(int argc, char *argv[]) {
   try {
@@ -37,7 +36,8 @@ int main(int argc, char *argv[]) {
     const char *usage =
         "Reads in wav file(s) and simulates online decoding with neural nets\n"
         "(nnet2 setup), with optional iVector-based speaker adaptation and\n"
-        "optional endpointing.  Note: some configuration values and inputs are\n"
+        "optional endpointing.  Note: some configuration values and inputs "
+        "are\n"
         "set via config files whose filenames are passed as options\n"
         "\n"
         "Usage: online2-feat [options] "
@@ -56,18 +56,20 @@ int main(int argc, char *argv[]) {
     BaseFloat chunk_length_secs = 0.05;
     bool online = true;
 
-    po.Register("chunk-length", &chunk_length_secs,
-                "Length of chunk size in seconds, that we process.  Set to <= 0 "
-                "to use all input in one chunk.");
-    po.Register("online", &online,
-                "You can set this to false to disable online iVector estimation "
-                "and have all the data for each utterance used, even at "
-                "utterance start.  This is useful where you just want the best "
-                "results and don't care about online operation.  Setting this to "
-                "false has the same effect as setting "
-                "--use-most-recent-ivector=true and --greedy-ivector-extractor=true "
-                "in the file given to --ivector-extraction-config, and "
-                "--chunk-length=-1.");
+    po.Register(
+        "chunk-length", &chunk_length_secs,
+        "Length of chunk size in seconds, that we process.  Set to <= 0 "
+        "to use all input in one chunk.");
+    po.Register(
+        "online", &online,
+        "You can set this to false to disable online iVector estimation "
+        "and have all the data for each utterance used, even at "
+        "utterance start.  This is useful where you just want the best "
+        "results and don't care about online operation.  Setting this to "
+        "false has the same effect as setting "
+        "--use-most-recent-ivector=true and --greedy-ivector-extractor=true "
+        "in the file given to --ivector-extraction-config, and "
+        "--chunk-length=-1.");
     po.Register("num-threads-startup", &g_num_threads,
                 "Number of threads used when initializing iVector extractor.");
 
@@ -75,14 +77,15 @@ int main(int argc, char *argv[]) {
 
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 3) {
+    if (po.NumArgs() != 4) {
       po.PrintUsage();
       return 1;
     }
 
     std::string spk2utt_rspecifier = po.GetArg(1),
-        wav_rspecifier = po.GetArg(2),
-        feat_wspecifier = po.GetArg(3);
+                wav_rspecifier = po.GetArg(2),
+                feat_wspecifier = po.GetArg(3),
+                feat_wspecifier2 = po.GetArg(4);
 
     OnlineNnet2FeaturePipelineInfo feature_info(feature_config);
     if (!online) {
@@ -96,7 +99,6 @@ int main(int argc, char *argv[]) {
       ReadKaldiObject(feature_info.global_cmvn_stats_rxfilename,
                       &global_cmvn_stats);
 
-
     int32 num_done = 0, num_err = 0;
     double tot_like = 0.0;
     int64 num_frames = 0;
@@ -104,6 +106,7 @@ int main(int argc, char *argv[]) {
     SequentialTokenVectorReader spk2utt_reader(spk2utt_rspecifier);
     RandomAccessTableReader<WaveHolder> wav_reader(wav_rspecifier);
     BaseFloatMatrixWriter feat_writer(feat_wspecifier);
+    BaseFloatMatrixWriter feat_writer2(feat_wspecifier2);
 
     OnlineTimingStats timing_stats;
 
@@ -142,34 +145,65 @@ int main(int argc, char *argv[]) {
 
         int32 samp_offset = 0;
         std::vector<std::pair<int32, BaseFloat> > delta_weights;
-
+        int32 feat_dim = feature_pipeline.InputFeature()->Dim();
+        bool tag = true;
         while (samp_offset < data.Dim()) {
           int32 samp_remaining = data.Dim() - samp_offset;
-          int32 num_samp = chunk_length < samp_remaining ? chunk_length
-                                                         : samp_remaining;
+          int32 num_samp =
+              chunk_length < samp_remaining ? chunk_length : samp_remaining;
 
           SubVector<BaseFloat> wave_part(data, samp_offset, num_samp);
           feature_pipeline.AcceptWaveform(samp_freq, wave_part);
-
+          Matrix<BaseFloat> dd_feats_(1, feat_dim, kUndefined);
+          if (feature_pipeline.InputFeature()->NumFramesReady() > 160 && tag){
+            SubVector<BaseFloat> dest(dd_feats_, 0);
+            feature_pipeline.InputFeature()->GetFrame(158, &dest);
+            KALDI_VLOG(3) << "index158:" << dest;
+            feature_pipeline.InputFeature()->GetFrame(159, &dest);
+            KALDI_VLOG(3) << "index159:" << dest;
+            feature_pipeline.InputFeature()->GetFrame(160, &dest);
+            KALDI_VLOG(3) << "index160:" << dest;
+            tag = false;
+          }
           samp_offset += num_samp;
           if (samp_offset == data.Dim()) {
+            KALDI_VLOG(3) << "read wav end frames:"
+                          << feature_pipeline.InputFeature()->NumFramesReady();
+            Matrix<BaseFloat> debug_feat_(
+                feature_pipeline.InputFeature()->NumFramesReady(), feat_dim,
+                kUndefined);
+            for (int32 i = 0;
+                 i < feature_pipeline.InputFeature()->NumFramesReady(); i++) {
+              SubVector<BaseFloat> dest(debug_feat_, i);
+              feature_pipeline.InputFeature()->GetFrame(i, &dest);
+              // KALDI_VLOG(3) << "before" << i << dest;
+            }
+            feat_writer2.Write(utt, debug_feat_);
             // no more input. flush out last frames
-            feature_pipeline.InputFinished();
+            feature_pipeline.InputFinished(); 
+            
+            int32 num_feature_frames_ready = feature_pipeline.InputFeature()->NumFramesReady();
+            bool is_finished = feature_pipeline.InputFeature()->IsLastFrame(num_feature_frames_ready - 1);
+            KALDI_VLOG(3) << "input frames:"
+                          << feature_pipeline.InputFeature()->NumFramesReady()
+                          << "is finished ? " << is_finished;
           }
-
         }
-        int32 feat_dim = feature_pipeline.InputFeature()->Dim();
-        Matrix<BaseFloat> last_feats_(feature_pipeline.InputFeature()->NumFramesReady(), feat_dim, kUndefined);
-        for(int32 i = 0; i< feature_pipeline.InputFeature()->NumFramesReady(); i++){
+        Matrix<BaseFloat> last_feats_(
+            feature_pipeline.InputFeature()->NumFramesReady(), feat_dim,
+            kUndefined);
+        for (int32 i = 0; i < feature_pipeline.InputFeature()->NumFramesReady();
+             i++) {
           SubVector<BaseFloat> dest(last_feats_, i);
           feature_pipeline.InputFeature()->GetFrame(i, &dest);
+          KALDI_VLOG(3) << "end" << i << dest;
         }
 
         // In an application you might avoid updating the adaptation state if
         // you felt the utterance had low confidence.  See lat/confidence.h
         // feature_pipeline.GetAdaptationState(&adaptation_state);
         // feature_pipeline.GetCmvnState(&cmvn_state);
-        
+
         feat_writer.Write(utt, last_feats_);
         KALDI_LOG << "write utterance's feature " << utt;
         num_done++;
@@ -177,13 +211,13 @@ int main(int argc, char *argv[]) {
     }
     timing_stats.Print(online);
 
-    KALDI_LOG << "feat " << num_done << " utterances, "
-              << num_err << " with errors.";
+    KALDI_LOG << "feat " << num_done << " utterances, " << num_err
+              << " with errors.";
     KALDI_LOG << "Overall likelihood per frame was " << (tot_like / num_frames)
               << " per frame over " << num_frames << " frames.";
     return (num_done != 0 ? 0 : 1);
-  } catch(const std::exception& e) {
+  } catch (const std::exception &e) {
     std::cerr << e.what();
     return -1;
   }
-} // main()
+}  // main()
