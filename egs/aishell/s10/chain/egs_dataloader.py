@@ -39,7 +39,7 @@ def get_egs_dataloader(egs_dir_or_scp,
 
     if local_rank is not None:
         sampler = torch.utils.data.distributed.DistributedSampler(
-            dataset, num_replicas=world_size, rank=local_rank, shuffle=False)
+            dataset, num_replicas=world_size, rank=local_rank, shuffle=True)
     else:
         sampler = torch.utils.data.SequentialSampler(dataset)
     
@@ -198,7 +198,7 @@ class NnetChainExampleCollateFunc:
 
 
 def _test_nnet_chain_example_dataloader():
-    scp_dir = 'exp/chain_pybind/tdnn_sp/egs_chain2_for_training'
+    scp_dir = 'exp/chain_pybind/tdnnnoivector_delta_sp/egs_chain2_for_training'
     _test_dataloader_iter(scp_dir)
 
 def _test_dataloader_iter(scp_dir_or_file):

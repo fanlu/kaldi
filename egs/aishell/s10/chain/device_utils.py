@@ -4,6 +4,7 @@
 # Apache 2.0
 
 import logging
+import os
 
 import numpy as np
 import torch
@@ -41,3 +42,16 @@ def allocate_gpu_devices(num: int = 1):
     return device_list
 
 
+def get_init_method(local_rank, dir):
+    if local_rank == 0:
+        init_method = 'tcp://{}:7275'.format(os.environ["HOSTNAME"])
+        with open('{}/SGE_MASTER'.format(dir), 'w') as f:
+            f.write(init_method)
+    else:
+        import time
+        while not os.path.exists('{}/SGE_MASTER'.format(dir)):
+            time.sleep(5)
+        with open('{}/SGE_MASTER'.format(dir), 'r') as f:
+            init_method = f.readlines()[0]
+    logging.info('local_rank: {}, {}'.format(local_rank, init_method))
+    return init_method

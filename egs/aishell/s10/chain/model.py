@@ -5,6 +5,7 @@
 
 import logging
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,11 +73,11 @@ output-layer name=output-xent dim=3456 learning-rate-factor=5.0 l2-regularize=0.
 def constrain_orthonormal_hook(model, unused_x):
     if model.training == False:
         return
-
-    with torch.no_grad():
-        for m in model.modules():
-            if hasattr(m, 'constrain_orthonormal'):
-                m.constrain_orthonormal()
+    if np.random.choice(4) == 0:
+        with torch.no_grad():
+            for m in model.modules():
+                if hasattr(m, 'constrain_orthonormal'):
+                    m.constrain_orthonormal()
 
 
 # Create a network like the above one

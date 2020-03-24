@@ -3,11 +3,14 @@
 # Copyright 2019-2020 Mobvoi AI Lab, Beijing, China (author: Fangjun Kuang)
 # Apache 2.0
 
+from device_utils import allocate_gpu_devices, get_init_method
 import logging
 import os
 import sys
+import math
 import warnings
 from multiprocessing import Process
+from pyinstrument import Profiler
 # disable warnings when loading tensorboard
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -18,7 +21,7 @@ import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_value_
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.tensorboard import SummaryWriter 
+from torch.utils.tensorboard import SummaryWriter
 
 import kaldi
 import kaldi_pybind.chain as chain
@@ -29,7 +32,6 @@ from common import load_checkpoint
 from common import save_checkpoint
 from common import save_training_info
 from common import setup_logger
-from device_utils import allocate_gpu_devices
 from egs_dataloader import get_egs_dataloader
 from libs.nnet3.train.dropout_schedule import _get_dropout_proportions
 from model import get_chain_model
@@ -39,7 +41,7 @@ def get_objf(batch, model, device, criterion, opts, den_graph, training, optimiz
     total_objf = 0.
     total_weight = 0.
     total_frames = 0.  # for display only
-    
+
     feature_list, supervision_list = batch
     assert len(feature_list) == len(supervision_list)
     batch_size = len(feature_list)
@@ -75,11 +77,18 @@ def get_objf(batch, model, device, criterion, opts, den_graph, training, optimiz
 				    supervision_list[n], nnet_output,
 				    xent_output)
         objf = objf_l2_term_weight[0]
+        grad_norm = 0
         if training:
             optimizer.zero_grad()
             objf.backward()
             clip_grad_value_(model.parameters(), 5.0)
             optimizer.step()
+            # grad_norm = torch.nn.utils.clip_grad_norm_(
+            #     model.parameters(), 10)
+            # if math.isnan(grad_norm):
+            #     logging.warning('grad norm is nan. Do not update model.')
+            # else:
+            #     optimizer.step()
 
         objf_l2_term_weight = objf_l2_term_weight.detach().cpu()
 
@@ -88,19 +97,19 @@ def get_objf(batch, model, device, criterion, opts, den_graph, training, optimiz
         num_frames = nnet_output.shape[0]
         total_frames += num_frames
 
-    return total_objf, total_weight, total_frames
+    return total_objf, total_weight, total_frames, grad_norm
 
 
 def get_validation_objf(dataloader, model, device, criterion, opts, den_graph):
     total_objf = 0.
     total_weight = 0.
     total_frames = 0.  # for display only
- 
+
     model.eval()
 
     for batch_idx, (pseudo_epoch, batch) in enumerate(dataloader):
-        objf, weight, frames = get_objf(
-            batch, model, device, criterion, opts, den_graph, False) 
+        objf, weight, frames, _ = get_objf(
+            batch, model, device, criterion, opts, den_graph, False)
         total_objf += objf
         total_weight += weight
         total_frames += frames
@@ -108,14 +117,14 @@ def get_validation_objf(dataloader, model, device, criterion, opts, den_graph):
     return total_objf, total_weight, total_frames
 
 
-def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, criterion, 
+def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, criterion,
                     current_epoch, num_epochs, opts, den_graph, tf_writer, rank, dropout_schedule):
     total_objf = 0.
     total_weight = 0.
     total_frames = 0.  # for display only
 
     model.train()
-    # iterates over one training scp file in one `pseudo_epoch`, 
+    # iterates over one training scp file in one `pseudo_epoch`,
     # so one `pseudo_epoch` may contain many `batch`.
     for batch_idx, (pseudo_epoch, batch) in enumerate(dataloader):
         # `len(dataloader)` returns the number of `pseudo_epoch`
@@ -125,8 +134,9 @@ def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, crit
                          len(dataloader)) / (len(dataloader) * num_epochs)
         _, dropout = _get_dropout_proportions(
             dropout_schedule, data_fraction)[0]
-        curr_batch_objf, curr_batch_weight, curr_batch_frames = get_objf(
-            batch, model, device, criterion, opts, den_graph, True, optimizer, dropout=dropout)
+        curr_batch_objf, curr_batch_weight, curr_batch_frames, curr_grad_norm = get_objf(
+            batch, model, device, criterion, opts, den_graph, True, optimizer,
+            dropout=dropout)
 
         total_objf += curr_batch_objf
         total_weight += curr_batch_weight
@@ -141,7 +151,7 @@ def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, crit
                     device.index, batch_idx, pseudo_epoch, len(dataloader),
                     float(pseudo_epoch) / len(dataloader) * 100,
                     total_objf / total_weight, total_frames,
-                    curr_batch_objf / curr_batch_weight, 
+                    curr_batch_objf / curr_batch_weight,
                     curr_batch_frames, current_epoch))
 
         if valid_dataloader and batch_idx % 1000 == 0:
@@ -161,6 +171,12 @@ def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, crit
                 tf_writer.add_scalar('train/global_valid_average_objf',
                                  total_valid_objf / total_valid_weight,
                                  pseudo_epoch + current_epoch * len(dataloader))
+        if (rank is None or rank == 0) and tf_writer is not None:
+            tf_writer.add_scalar(
+                'train/current_grad_norm',
+                curr_grad_norm,
+                pseudo_epoch + current_epoch * len(dataloader))
+            logging.debug('grad norm={}'.format(curr_grad_norm))
         # rank == None means we are not using ddp
         if (rank is None or rank == 0) and batch_idx % 100 == 0 and tf_writer is not None:
             tf_writer.add_scalar('train/global_average_objf',
@@ -170,7 +186,7 @@ def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, crit
                 'train/current_batch_average_objf',
                 curr_batch_objf / curr_batch_weight,
                 pseudo_epoch + current_epoch * len(dataloader))
-            
+
             tf_writer.add_scalar(
                 'train/current_dropout',
                 dropout,
@@ -194,7 +210,6 @@ def train_one_epoch(dataloader, valid_dataloader, model, device, optimizer, crit
 
 def main():
     args = get_args()
-
     if args.use_ddp:
         learning_rate = args.learning_rate * args.world_size
         if args.multiple_machine:
@@ -219,7 +234,7 @@ def main():
 
 def process_job(learning_rate, device_id=None, local_rank=None):
     args = get_args()
-    if local_rank is not None:    
+    if local_rank is not None:
         setup_logger('{}/logs/log-train-rank-{}'.format(args.dir, local_rank),
                  args.log_level)
     else:
@@ -237,13 +252,15 @@ def process_job(learning_rate, device_id=None, local_rank=None):
             logging.error('Allocate GPU failed!')
             sys.exit(-1)
         device_id = devices[0][0]
-    
-    logging.info('device: {}'.format(device_id))
 
+    logging.info('device: {}'.format(device_id))
+    # logging.info(os.environ)
     if args.use_ddp:
-        os.environ["NCCL_IB_DISABLE"]="1"  
+        os.environ["NCCL_IB_DISABLE"]="1"
+        init_method = args.init_method
+        init_method = get_init_method(local_rank, args.dir)
         dist.init_process_group('nccl',
-                            init_method=args.init_method,
+                            init_method=init_method,
                             rank=local_rank,
                             world_size=args.world_size)
 
@@ -264,7 +281,7 @@ def process_job(learning_rate, device_id=None, local_rank=None):
     opts.leaky_hmm_coefficient = args.leaky_hmm_coefficient
 
     den_graph = chain.DenominatorGraph(fst=den_fst, num_pdfs=args.output_dim)
-    
+
     model = get_chain_model(
         feat_dim=args.feat_dim,
         output_dim=args.output_dim,
@@ -292,7 +309,7 @@ def process_job(learning_rate, device_id=None, local_rank=None):
                 best_objf=best_objf))
 
     model.to(device)
-    
+
     if args.use_ddp:
         model = DDP(model, device_ids=[device_id])
 
@@ -324,10 +341,10 @@ def process_job(learning_rate, device_id=None, local_rank=None):
     best_epoch = start_epoch
     best_model_path = os.path.join(args.dir, 'best_model.pt')
     best_epoch_info_filename = os.path.join(args.dir, 'best-epoch-info')
-    
+
     if args.use_ddp:
         dist.barrier()
-
+    
     try:
         for epoch in range(start_epoch, args.num_epochs):
             curr_learning_rate =  learning_rate * pow(0.4, epoch)
@@ -339,7 +356,11 @@ def process_job(learning_rate, device_id=None, local_rank=None):
 
             if tf_writer:
                 tf_writer.add_scalar('learning_rate', curr_learning_rate, epoch)
-           
+
+            if dataloader.sampler and isinstance(dataloader.sampler, DistributedSampler):
+                dataloader.sampler.set_epoch(epoch)
+            profiler = Profiler()
+            profiler.start()
             objf = train_one_epoch(dataloader=dataloader,
                                    valid_dataloader=valid_dataloader,
                                    model=model,
@@ -353,6 +374,9 @@ def process_job(learning_rate, device_id=None, local_rank=None):
                                    tf_writer=tf_writer,
                                    rank=local_rank,
                                    dropout_schedule=args.dropout_schedule)
+            profiler.stop()
+            logging.info('device {}, epoch {}, profile {}'.format(
+                device_id, epoch, profiler.output_text(unicode=True, color=True)))
 
             if best_objf is None:
                 best_objf = objf
