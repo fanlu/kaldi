@@ -177,6 +177,8 @@ option max_jobs_run=* -tc $0
 default gpu=0
 option gpu=0
 option gpu=* -l gpu=$0 -q 'g.q'
+option pri=0
+option pri=* -p $0
 EOF
 
 # Here the configuration options specified by the user on the command line

@@ -54,10 +54,10 @@ right_tolerance=  # chain right tolerance == max label delay.
 left_tolerance=
 
 stage=0
-max_jobs_run=15         # This should be set to the maximum number of nnet3-chain-get-egs jobs you are
+max_jobs_run=150         # This should be set to the maximum number of nnet3-chain-get-egs jobs you are
                         # comfortable to run in parallel; you can increase it if your disk
                         # speed is greater and you have more machines.
-max_shuffle_jobs_run=50  # the shuffle jobs now include the nnet3-chain-normalize-egs command,
+max_shuffle_jobs_run=300  # the shuffle jobs now include the nnet3-chain-normalize-egs command,
                          # which is fairly CPU intensive, so we can run quite a few at once
                          # without overloading the disks.
 srand=0     # rand seed for nnet3-chain-get-egs, nnet3-chain-copy-egs and nnet3-chain-shuffle-egs
@@ -207,7 +207,7 @@ if $online_cmvn; then
   fi
   touch $dir/online_cmvn
 else
-  [ -f $dir/online_cmvn ] && rm $dir/online_cmvn
+  [ -f $dir/online_cmvn ] && \rm $dir/online_cmvn
 fi
 
 # create the feature pipelines,
@@ -353,7 +353,7 @@ echo $right_context_final > $dir/info/right_context_final
 
 if [ $stage -le 2 ]; then
   echo "$0: Getting validation and training subset examples in background."
-  rm $dir/.error 2>/dev/null
+  \rm $dir/.error 2>/dev/null
 
   (
     $cmd --max-jobs-run 6 JOB=1:$nj $dir/log/lattice_copy.JOB.log \
@@ -414,7 +414,7 @@ if [ $stage -le 2 ]; then
     for f in $dir/{combine,train_diagnostic,valid_diagnostic}.cegs; do
       [ ! -s $f ] && echo "$0: No examples in file $f" && exit 1;
     done
-    rm $dir/valid_all.cegs $dir/train_subset_all.cegs $dir/{train,valid}_combine.cegs
+    \rm $dir/valid_all.cegs $dir/train_subset_all.cegs $dir/{train,valid}_combine.cegs
   ) || touch $dir/.error &
 fi
 
@@ -480,7 +480,7 @@ if [ $stage -le 5 ]; then
       for j in $(seq $num_archives_intermediate); do
         cat $dir/cegs.$j.scp || exit 1;
       done > $dir/cegs.scp || exit 1;
-      for f in $dir/cegs.*.scp; do rm $f; done
+      for f in $dir/cegs.*.scp; do \rm $f; done
     fi
   else
     # we need to shuffle the 'intermediate archives' and then split into the
@@ -509,13 +509,13 @@ if [ $stage -le 5 ]; then
 
     if $generate_egs_scp; then
       #concatenate cegs.JOB.scp in single cegs.scp
-      rm -rf $dir/cegs.scp
+      \rm -rf $dir/cegs.scp
       for j in $(seq $num_archives_intermediate); do
         for y in $(seq $archives_multiple); do
           cat $dir/cegs.$j.$y.scp || exit 1;
         done
       done > $dir/cegs.scp || exit 1;
-      for f in $dir/cegs.*.*.scp; do rm $f; done
+      for f in $dir/cegs.*.*.scp; do \rm $f; done
     fi
   fi
 fi
@@ -525,21 +525,45 @@ if [ -f $dir/.error ]; then
   echo "$0: Error detected while creating train/valid egs" && exit 1
 fi
 
+# if [ $stage -le 6 ]; then
+#   echo "$0: Removing temporary archives, alignments and lattices"
+#   (
+#     cd $dir
+#     for f in $(ls -l . | grep 'cegs_orig' | awk '{ X=NF-1; Y=NF-2; if ($X == "->")  print $Y, $NF; }'); do rm $f; done
+#     # the next statement removes them if we weren't using the soft links to a
+#     # 'storage' directory.
+#     rm cegs_orig.*.ark 2>/dev/null
+#   )
+#   if ! $generate_egs_scp && [ $archives_multiple -gt 1 ]; then
+#     # there are some extra soft links that we should delete.
+#     for f in $dir/cegs.*.*.ark; do rm $f; done
+#   fi
+#   rm $dir/ali.{ark,scp} 2>/dev/null
+#   rm $dir/lat_special.*.{ark,scp} 2>/dev/null
+# fi
+
 if [ $stage -le 6 ]; then
   echo "$0: Removing temporary archives, alignments and lattices"
+  # mkdir -p /tmp/test
+  # rsync -avP --exclude 'cegs.*.ark' --exclude '*diagnostic.cegs' --exclude '*_uttlist' --exclude 'cmvn_opts' --exclude 'combine.cegs' --exclude 'info' --exclude 'lat_special.scp'  --delete-before /tmp/test/ $dir
+  # rsync -aqP --exclude "cegs.*.ark" --exclude '*diagnostic.cegs' --exclude '*_uttlist' --exclude 'cmvn_opts' --exclude 'combine.cegs' --exclude "info" --exclude "log" --exclude 'lat_special.scp' --delete /tmp/test/ $dir
+  # rsync -avz --delete --exclude "cegs.*.ark" --exclude "info" /tmp/test/ test/
   (
     cd $dir
-    for f in $(ls -l . | grep 'cegs_orig' | awk '{ X=NF-1; Y=NF-2; if ($X == "->")  print $Y, $NF; }'); do rm $f; done
+    for f in $(ls -l . | grep 'cegs_orig' | awk '{ X=NF-1; Y=NF-2; if ($X == "->")  print $Y, $NF; }'); do 
+      \rm $f; 
+    done
     # the next statement removes them if we weren't using the soft links to a
     # 'storage' directory.
-    rm cegs_orig.*.ark 2>/dev/null
+    # \rm cegs_orig.*.ark 2>/dev/null
+    find . -name "cegs_orig.*.ark" -type f -delete
   )
   if ! $generate_egs_scp && [ $archives_multiple -gt 1 ]; then
     # there are some extra soft links that we should delete.
-    for f in $dir/cegs.*.*.ark; do rm $f; done
+    for f in $dir/cegs.*.*.ark; do \rm $f; done
   fi
-  rm $dir/ali.{ark,scp} 2>/dev/null
-  rm $dir/lat_special.*.{ark,scp} 2>/dev/null
+  \rm $dir/ali.{ark,scp} 2>/dev/null
+  \rm $dir/lat_special.*.{ark,scp} 2>/dev/null
 fi
 
 echo "$0: Finished preparing training examples"
