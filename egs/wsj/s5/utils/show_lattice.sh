@@ -20,7 +20,8 @@ uttid=$1
 lat=$2
 words=$3
 
-tmpdir=$(mktemp -d /tmp/kaldi.XXXX); # trap "rm -r $tmpdir" EXIT # cleanup
+tmpdir=$(mktemp -d ./temp/kaldi.XXXX); # trap "rm -r $tmpdir" EXIT # cleanup
+chmod 755 $tmpdir
 
 gunzip -c $lat | lattice-to-fst --lm-scale=$lm_scale --acoustic-scale=$acoustic_scale ark:- "scp,p:echo $uttid $tmpdir/$uttid.fst|" || exit 1;
 ! [ -s $tmpdir/$uttid.fst ] && \
