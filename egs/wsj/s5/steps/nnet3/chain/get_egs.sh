@@ -81,7 +81,7 @@ lattice_prune_beam=         # If supplied, the lattices will be pruned to this b
                             # before being used to get supervisions.
 acwt=0.1   # For pruning
 deriv_weights_scp=
-generate_egs_scp=false
+generate_egs_scp=true
 
 echo "$0 $@"  # Print the command line for logging
 
@@ -543,27 +543,7 @@ fi
 # fi
 
 if [ $stage -le 6 ]; then
-  echo "$0: Removing temporary archives, alignments and lattices"
-  # mkdir -p /tmp/test
-  # rsync -avP --exclude 'cegs.*.ark' --exclude '*diagnostic.cegs' --exclude '*_uttlist' --exclude 'cmvn_opts' --exclude 'combine.cegs' --exclude 'info' --exclude 'lat_special.scp'  --delete-before /tmp/test/ $dir
-  # rsync -aqP --exclude "cegs.*.ark" --exclude '*diagnostic.cegs' --exclude '*_uttlist' --exclude 'cmvn_opts' --exclude 'combine.cegs' --exclude "info" --exclude "log" --exclude 'lat_special.scp' --delete /tmp/test/ $dir
-  # rsync -avz --delete --exclude "cegs.*.ark" --exclude "info" /tmp/test/ test/
-  (
-    cd $dir
-    for f in $(ls -l . | grep 'cegs_orig' | awk '{ X=NF-1; Y=NF-2; if ($X == "->")  print $Y, $NF; }'); do 
-      \rm $f; 
-    done
-    # the next statement removes them if we weren't using the soft links to a
-    # 'storage' directory.
-    # \rm cegs_orig.*.ark 2>/dev/null
-    find . -name "cegs_orig.*.ark" -type f -delete
-  )
-  if ! $generate_egs_scp && [ $archives_multiple -gt 1 ]; then
-    # there are some extra soft links that we should delete.
-    for f in $dir/cegs.*.*.ark; do \rm $f; done
-  fi
-  \rm $dir/ali.{ark,scp} 2>/dev/null
-  \rm $dir/lat_special.*.{ark,scp} 2>/dev/null
+  nohup steps/nnet3/chain/clear_egs.sh $dir $generate_egs_scp $archives_multiple > $dir/clear_egs_tmp.log 2>&1 &
 fi
-
+sleep 10
 echo "$0: Finished preparing training examples"
