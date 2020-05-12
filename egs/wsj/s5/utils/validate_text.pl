@@ -88,7 +88,7 @@ sub validate_utf8_whitespaces {
     }
     $current_line =~ s/[\x{0009}\x{000a}\x{0020}]/./g;
     if ($current_line =~/\s/) {
-      print STDERR "$0: The line for utterance $utt_id contains disallowed Unicode whitespaces\n";
+      print STDERR "$0: The line at no. $i for utterance $utt_id contains disallowed Unicode whitespaces\n";
       return 1;
     }
   }
