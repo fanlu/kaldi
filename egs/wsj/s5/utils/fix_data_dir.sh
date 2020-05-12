@@ -169,17 +169,18 @@ function filter_utts {
       awk '{ if (NF == 2 && $2 > 0) { print }}' > $data/utt2num_frames.ok || exit 1
     maybe_utt2num_frames=utt2num_frames.ok
   fi
-
+  
   for x in feats.scp text segments utt2lang utt2emo $maybe_wav $maybe_utt2dur $maybe_utt2num_frames; do
     if [ -f $data/$x ]; then
       utils/filter_scp.pl $data/$x $tmpdir/utts > $tmpdir/utts.tmp
-      echo "$(cat $tmpdir/utts | wc -l)"
+      echo "$data/$x, $(cat $tmpdir/utts | wc -l), $(cat $tmpdir/utts.tmp | wc -l)"
       mv $tmpdir/utts.tmp $tmpdir/utts
+      # echo "$tmpdir/utts"
     fi
   done
   rm $data/utt2dur.ok 2>/dev/null || true
   rm $data/utt2num_frames.ok 2>/dev/null || true
-
+  
   [ ! -s $tmpdir/utts ] && echo "fix_data_dir.sh: no utterances remained: not proceeding further." && \
     rm $tmpdir/utts && exit 1;
 
